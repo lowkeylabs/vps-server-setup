@@ -1,5 +1,4 @@
 # Securing a new VPS server
-Securing your new Ubuntu 22.04.5 VPS is crucial to protect your server from unauthorized access, vulnerabilities, and potential attacks. Below is a comprehensive step-by-step guide to help you secure your server and prepare it for deploying applications:
 
 ---
 
@@ -60,6 +59,8 @@ sudo usermod -aG sudo john
    echo <paste> >> ~/.ssh/authorized_keys
    ```
 
+   Log out and log in to verify that you can access the machine without a password.
+
 #### b. **Disable Password Authentication**
 
 1. **Edit SSH Configuration:**
@@ -95,6 +96,10 @@ Changing the default SSH port (22) can reduce automated attack attempts.
 
 2. **Change the Port Number:**
 
+   In this example we're permitting both 22 and 7822.
+
+   **You'll need to update the firewall to open this new port number!**
+
    ```bash
    Port 22
    Port 7822
@@ -102,13 +107,22 @@ Changing the default SSH port (22) can reduce automated attack attempts.
 
    *Choose a port number above 1024.*
 
-3. **Update UFW Rules (see Firewall Setup below) and Restart SSH:**
+3. **Restart SSH:**
 
    ```bash
    sudo systemctl restart ssh
    ```
 
 ---
+
+### 3.5 **Ensure VNC app for A2Hosting access is running**
+
+   ```bash
+   sudo apt install qemu-guest-agent
+   ```
+
+   Access through my.a2hosting.com, then services -> manage -> settings -> VNC
+
 
 ### 4. **Set Up a Firewall (UFW)**
 
@@ -124,6 +138,8 @@ Ubuntu's Uncomplicated Firewall (UFW) is a user-friendly interface to manage ipt
 
 2. **Allow SSH Connections:**
 
+   Include any ports from the SSh steps above.
+
    ```bash
    sudo ufw allow OpenSSH
    sudo ufw allow 7822/tcp
@@ -136,6 +152,28 @@ Ubuntu's Uncomplicated Firewall (UFW) is a user-friendly interface to manage ipt
    sudo ufw status
    ```
 
+3.5 **Ensure ufw custom profiles are installed or create them:**
+
+   ```bash
+   sudo ufw app list
+   ```
+
+   ```bash
+   sudo nano /etc/ufw/applications.d/mysql
+   ```
+
+   ```bash
+   [MySQL]
+   title=MySQL Database Server
+   description=Allow MySQL connections on port 3306
+   ports=3306/tcp
+   ```
+
+   ```bash
+   sudo ufw app update MySQL
+   sudo ufw allow 'MySQL'
+   ```
+
 4. **Allow Other Necessary Ports:**
 
    Depending on your applications, allow necessary ports (e.g., HTTP, HTTPS).
@@ -143,6 +181,13 @@ Ubuntu's Uncomplicated Firewall (UFW) is a user-friendly interface to manage ipt
    ```bash
    sudo ufw allow 'Apache Full'
    sudo ufw allow 'MySQL'
+   ```
+
+
+5. **Verify open ports***
+
+   ```bash
+   sudo ufw status verbose
    ```
 
 ---
@@ -187,6 +232,136 @@ Fail2Ban helps protect against brute-force attacks by banning suspicious IPs.
    ```
 
 ---
+
+### 5.5 **Install docker**
+
+   Rather than use the default install, we'll install the latest version from docker.
+
+1. **Remove old installation:**
+
+   Edit as necessary, this command may break.
+
+   ```bash
+   sudo apt-get remove docker docker-engine docker.io containerd runc
+   ```
+2. **Update package index:**
+
+   ```bash
+   sudo apt-get update
+   ```
+
+   ```bash
+   sudo apt-get install \
+      ca-certificates \
+      curl \
+      gnupg \
+      lsb-release
+   ```
+
+   ```bash
+   sudo mkdir -p /etc/apt/keyrings
+   curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+   ```
+
+   ```bash
+   echo \
+      "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+      $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+   ```
+
+   ```bash
+   sudo apt-get update
+   sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+   ```
+
+   ```bash
+   sudo systemctl start docker
+   sudo systemctl enable docker
+   ```
+
+
+2. **Add users to docker group and test docker:**
+
+   ```bash
+   sudo usermod -aG docker john
+   docker run hello-world
+   ```
+
+3. **Adjust ufw to work with docker**
+
+   ```bash
+   sudo nano /etc/default/ufw
+   ```
+
+   Set:
+   
+   ```bash
+   DEFAULT_FORWARD_POLICY="ACCEPT"
+   ```
+
+   ```bash
+   sudo systemctl restart ufw
+   ```
+
+   ```bash
+   sudo ufw allow in on docker0
+   sudo ufw allow out on docker0
+   ```
+
+   Open ports for specific docker apps as necessary, etc.
+
+   ```bash
+   sudo ufw allow 8080
+   ```
+
+4. **Enable IP forwarding**
+
+   check current Settings
+
+   ```bash
+   sysctl net.ipv4.ip_forward
+   ```
+
+   If not enabled (=1): edit /etc/sysctl.conf
+   
+   ```bash
+   net.ipv4.ip_forward=1
+   ```
+
+   Apply changes
+   
+   ```bash
+   sudo sysctl -p
+   ```
+
+5. **Test docker networking**
+
+   Launch a container
+   
+   ```bash
+   docker run -d -p 8080:80 nginx
+   ```
+
+   Ensure 8080 is open for business
+
+   ```bash
+   sudo ufw enable 8080
+   ```
+
+   Test exposed container
+   
+   ```bash
+   curl https://cmsc-vcu.com:8080
+   ```
+
+   * use `docker ps -a` to list all running and stopped containers
+   * use `docker container prune` to remove stopped containers optionally
+   * use `docker image prune -a` to remove all unused images
+   * use `docker system prune -a` for a full cleanup of containers, images and other unused resources.
+
+
+---
+
 
 ### 6. **Disable Unnecessary Services and Remove Unused Software**
 
@@ -272,10 +447,11 @@ Depending on your server's RAM, configuring swap can prevent out-of-memory issue
 2. **Create a Swap File (e.g., 2G):**
 
    ```bash
-   sudo fallocate -l 2G /swapfile
+   sudo rm /swapfile
+   sudo dd if=/dev/zero of=/swapfile bs=1M count=8192
    sudo chmod 600 /swapfile
    sudo mkswap /swapfile
-   sudo swapon /swapfile
+   sudo swapon /swapfile   
    ```
 
 3. **Make Swap Permanent:**
@@ -317,7 +493,7 @@ Protect shared memory from being exploited.
 
 ---
 
-### 11. **Configure AppArmor**
+### 11. **Configure AppArmor - OPTIONAL**
 
 AppArmor provides Mandatory Access Control (MAC) to confine programs.
 
