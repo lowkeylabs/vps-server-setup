@@ -189,6 +189,33 @@ Ubuntu's Uncomplicated Firewall (UFW) is a user-friendly interface to manage ipt
    ```bash
    sudo ufw status verbose
    ```
+---
+
+### 4.8 **Check for failed services**
+
+
+```bash
+sudo systemctl status
+sudo systemctl --failed
+```
+
+This might not like to run on VPS
+
+```bash
+sudo systemctl mask user@1000.service
+```
+
+```bash
+networkctl list
+```
+
+If they're all unmanaged, then you can disable waiting.
+
+```bash
+sudo systemctl disable systemd-networkd-wait-online.service
+sudo systemctl mask systemd-networkd-wait-online.service
+sudo systemctl daemon-reload
+```
 
 ---
 
@@ -630,6 +657,13 @@ Ensure your server's time is accurate, which is vital for security protocols and
    ```bash
    chronyc tracking
    ```
+
+4. **Set appropriate timezone**
+
+   ```bash
+   sudo timedatectl set-timezone America/New_York
+   ```
+
 
 ---
 
